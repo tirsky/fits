@@ -27,10 +27,10 @@ def process(name: str = 'process', formal: bool = False):
             type = lines[1].strip()
             flag = lines[2].strip()
             dest_folder = lines[3].strip()
-            delete_files = lines[4].strip()
-            dark_folder = lines[5].strip()
-            bias_folder = lines[6].strip()
-            flat_folder = lines[7].strip()
+            dark_folder = lines[4].strip()
+            bias_folder = lines[5].strip()
+            flat_folder = lines[6].strip()
+            delete_files = lines[7].strip()
     else:
         typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
         root_folder = typer.prompt("Enter the source folder path (for example, C:\\Users)")
@@ -261,38 +261,58 @@ def get_temperature(hdr):
     else:
         return False
 
+
+def mediancombine(filelist):
+    '''
+    median combine files
+    '''
+    n = len(filelist)
+    first_frame_data = pyfits.getdata(filelist[0])
+    imsize_y, imsize_x = first_frame_data.shape
+    fits_stack = np.zeros((imsize_y, imsize_x , n), dtype = np.float32) 
+    for ii in range(0, n):
+        im = pyfits.getdata(filelist[ii])
+        fits_stack[:,:,ii] = im
+    med_frame = np.median(fits_stack, axis=2)
+    return med_frame
+
+
+
 #summirize FITS dark files in folder by median
 def summarize_dark(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    data = []
-    for file in files:
-        hdulist = pyfits.open(file, mode='update')
-        data.append(hdulist[0].data)
-        hdulist.close()
-    median = np.median(data, axis=0)
-    return median
+    return mediancombine(files)
+    # data = []
+    # for file in files:
+    #     hdulist = pyfits.open(file, mode='update')
+    #     data.append(hdulist[0].data)
+    #     hdulist.close()
+    # median = np.median(data, axis=0)
+    # return median
 
 #summirize FITS flat files in folder by median
 def summarize_flat(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    data = []
-    for file in files:
-        hdulist = pyfits.open(file, mode='update')
-        data.append(hdulist[0].data)
-        hdulist.close()
-    median = np.median(data, axis=0)
-    return median
+    return mediancombine(files)
+    # data = []
+    # for file in files:
+    #     hdulist = pyfits.open(file, mode='update')
+    #     data.append(hdulist[0].data)
+    #     hdulist.close()
+    # median = np.median(data, axis=0)
+    # return median
 
 #summirize FITS bias files in folder by median
 def summarize_bias(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    data = []
-    for file in files:
-        hdulist = pyfits.open(file, mode='update')
-        data.append(hdulist[0].data)
-        hdulist.close()
-    median = np.median(data, axis=0)
-    return median
+    return mediancombine(files)
+    # data = []
+    # for file in files:
+    #     hdulist = pyfits.open(file, mode='update')
+    #     data.append(hdulist[0].data)
+    #     hdulist.close()
+    # median = np.median(data, axis=0)
+    # return median
 
 
 def get_final_image(light_path, bias, dark, flat):
