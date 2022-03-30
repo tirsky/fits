@@ -1,3 +1,4 @@
+from itertools import count
 import time
 import os
 import shutil
@@ -269,6 +270,7 @@ def mediancombine(filelist, filter=None):
     first_frame_data = pyfits.getdata(filelist[0])
     imsize_y, imsize_x = first_frame_data.shape
     fits_stack = np.zeros((imsize_y, imsize_x , n), dtype = np.float32) 
+    count = 0
     for ii in range(0, n):
         if filter:
             hdr = pyfits.getheader(filelist[ii])
@@ -276,11 +278,16 @@ def mediancombine(filelist, filter=None):
                 im = pyfits.getdata(filelist[ii])
                 fits_stack[:,:,ii] = im
                 print(f'{filelist[ii]} added to stack with filter {filter}')
+                count += 1
             else:
                 continue
         else:
             im = pyfits.getdata(filelist[ii])
             fits_stack[:,:,ii] = im
+    if filter and count == 0:
+        #color typer red
+        typer.secho(f'No files with filter {filter} found', color='red')
+        exit()
     med_frame = np.median(fits_stack, axis=2)
     return med_frame
 
@@ -300,6 +307,7 @@ def summarize_dark(folder_path):
 
 #summirize FITS flat files in folder by median
 def summarize_flat(folder_path, filter):
+    print(f'Filter: {filter}')
     files = glob.glob(os.path.join(folder_path, '*.fits'))
     return mediancombine(files, filter)
     # data = []
