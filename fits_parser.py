@@ -44,16 +44,12 @@ def process(name: str = 'process', formal: bool = False):
         with open('config.txt', 'w') as f:
             f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
 
-    #calibration start for DARK
-    typer.echo(f'Start processing DARK files')
+    typer.echo(f'Start combining(median) DARK files')
     dark = summarize_dark(dark_folder)
-    typer.echo(f'DARK files processed')
-    typer.echo(f'Start processing BIAS files')
+    typer.echo(f'DARK files combined')
+    typer.echo(f'Start combining(median) BIAS files')
     bias = summarize_bias(bias_folder)
-    typer.echo(f'BIAS files processed')
-    typer.echo(f'Start processing FLAT files')
-    flat = summarize_flat(flat_folder)
-    typer.echo(f'FLAT files processed')
+    typer.echo(f'BIAS files combined')
     typer.echo(f'Start processing files')
 
     typer.secho(f"Processing started", fg=typer.colors.GREEN)
@@ -90,6 +86,9 @@ def process(name: str = 'process', formal: bool = False):
                     destination_folder = create_folder_filter(file_path, object, type, date, filter, dest_folder)
                     copy_file(file_path, destination_folder, delete_files)
                     new_file_path = rename_file(file_path, destination_folder, flag)
+                    typer.echo(f'Start combining(median) FLAT files')
+                    flat = summarize_flat(flat_folder, filter)
+                    typer.echo(f'FLAT files combined')
                     get_final_image(new_file_path, bias, dark, flat)
                     typer.echo(f'File {file} processed')
                     processed_files += 1
@@ -197,7 +196,7 @@ def copy_file(file_path, destination_folder, delete_files=False):
         if answer == 'y':
             shutil.copy(file_path, destination_folder)
             typer.echo(f'File {file_name} copied to {destination_folder}')
-            if delete_files:
+            if str(delete_files.lower()) == 'y':
                 os.remove(file_path)
                 typer.echo(f'File {file_name} deleted')
         else:
@@ -205,7 +204,7 @@ def copy_file(file_path, destination_folder, delete_files=False):
     else:
         shutil.copy(file_path, destination_folder)
         typer.echo(f'File {file_name} copied to {destination_folder}')
-        if delete_files:
+        if str(delete_files.lower()) == 'y':
             os.remove(file_path)
             typer.echo(f'File {file_name} deleted')
 
@@ -262,7 +261,7 @@ def get_temperature(hdr):
         return False
 
 
-def mediancombine(filelist):
+def mediancombine(filelist, filter=None):
     '''
     median combine files
     '''
@@ -271,8 +270,17 @@ def mediancombine(filelist):
     imsize_y, imsize_x = first_frame_data.shape
     fits_stack = np.zeros((imsize_y, imsize_x , n), dtype = np.float32) 
     for ii in range(0, n):
-        im = pyfits.getdata(filelist[ii])
-        fits_stack[:,:,ii] = im
+        if filter:
+            hdr = pyfits.getheader(filelist[ii])
+            if hdr.get('FILTER', 'C') == filter:
+                im = pyfits.getdata(filelist[ii])
+                fits_stack[:,:,ii] = im
+                print(f'{filelist[ii]} added to stack with filter {filter}')
+            else:
+                continue
+        else:
+            im = pyfits.getdata(filelist[ii])
+            fits_stack[:,:,ii] = im
     med_frame = np.median(fits_stack, axis=2)
     return med_frame
 
@@ -291,9 +299,9 @@ def summarize_dark(folder_path):
     # return median
 
 #summirize FITS flat files in folder by median
-def summarize_flat(folder_path):
+def summarize_flat(folder_path, filter):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    return mediancombine(files)
+    return mediancombine(files, filter)
     # data = []
     # for file in files:
     #     hdulist = pyfits.open(file, mode='update')
