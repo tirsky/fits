@@ -112,8 +112,9 @@ def process_fiter(hdr):
     '''
     get filter from file content
     '''
-    if hdr['FILTER']:
-        return hdr['FILTER']
+    filter = hdr.get('FILTER', 'C') 
+    if filter:
+        return filter
     else:
         return False
         
