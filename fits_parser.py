@@ -19,11 +19,30 @@ def process(name: str = 'process', formal: bool = False):
     #param formal: if True, process files with formal naming convention
     '''
 
-    typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
-    root_folder = typer.prompt("Source folder path? (for example, C:\\Users)")
-    type = typer.prompt("Type? (for example, LIGHT)")
-    flag = typer.prompt("flag? (for example, _CALIBRATED)")
-    dest_folder = typer.prompt("Destination folder path? (for example, C:\\Users\Light)")
+    current_dir = os.getcwd()
+    typer.echo(f'Current working directory: {current_dir}')
+    if os.path.exists(os.path.join(current_dir, 'config.txt')):
+        with open(os.path.join(current_dir, 'config.txt'), 'r') as f:
+            lines = f.readlines()
+            root_folder = lines[0].strip()
+            type = lines[1].strip()
+            flag = lines[2].strip()
+            dest_folder = lines[3].strip()
+    else:
+        typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
+        root_folder = typer.prompt("Enter the source folder path (for example, C:\\Users)")
+        type = typer.prompt("Enter type (for example, LIGHT)")
+        flag = typer.prompt("Enter flag (for example, _CALIBRATED)")
+        dest_folder = typer.prompt("Enter destination folder path (for example, C:\\Users\Light)")
+        with open('config.txt', 'w') as f:
+            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}')
+
+    typer.secho(f"Processing started", fg=typer.colors.GREEN)
+    typer.echo(f'Processing files in {root_folder}')
+    typer.echo(f'Type: {type}')
+    typer.echo(f'flag: {flag}')
+    typer.echo(f'Destination folder: {dest_folder}')
+    typer.echo(f'Processing files...')
 
     if not os.path.exists(dest_folder):
         os.mkdir(dest_folder)
@@ -57,13 +76,15 @@ def process(name: str = 'process', formal: bool = False):
                 typer.echo(f'File {file} not processed')
             hdulist.close()
         typer.echo()
-        typer.echo(f'Processing finished')
+        color = typer.colors.GREEN
+        typer.secho(f"Processing finished", fg=color)
         typer.echo(f'{processed_files} files processed')        
         typer.echo(f'Files skipped: {skipped_files}')
 
     # if formal:
     #     shutil.rmtree(root_folder)
     #     typer.secho(f"Source folder {root_folder} deleted", fg=typer.colors.GREEN)
+
 
 
 def process_fits_type(hdr, type):
@@ -182,6 +203,17 @@ def rename_file(file_path, destination_folder, flag):
     old_file_path = os.path.join(destination_folder, file_name)
     os.rename(old_file_path, new_file_path)
     typer.echo(f'File {file_name} renamed')
+    fix_fits_header(new_file_path)
+
+
+#fix FITS HEADER for CALIBRATED files add HISTORY = CALIBRATED to header
+def fix_fits_header(file_path):
+    hdulist = pyfits.open(file_path, mode='update')
+    hdr = hdulist[0].header
+    hdr.add_history('= CALIBRATED')
+    hdulist.flush()
+    hdulist.close()
+    typer.echo(f'File {file_path} header fixed')
 
     
 
