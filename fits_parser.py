@@ -4,9 +4,8 @@ import shutil
 import typer
 
 from astropy.io import fits as pyfits
-
-    
-
+import glob
+import numpy as np
 
 app = typer.Typer()
 
@@ -29,15 +28,33 @@ def process(name: str = 'process', formal: bool = False):
             flag = lines[2].strip()
             dest_folder = lines[3].strip()
             delete_files = lines[4].strip()
+            dark_folder = lines[5].strip()
+            bias_folder = lines[6].strip()
+            flat_folder = lines[7].strip()
     else:
         typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
         root_folder = typer.prompt("Enter the source folder path (for example, C:\\Users)")
         type = typer.prompt("Enter type (for example, LIGHT)")
         flag = typer.prompt("Enter flag (for example, _CALIBRATED)")
         dest_folder = typer.prompt("Enter destination folder path (for example, C:\\Users\Light)")
+        dark_folder = typer.prompt("Enter dark folder path (for example, C:\\Users\Dark)")
+        bias_folder = typer.prompt("Enter bias folder path (for example, C:\\Users\Bias)")
+        flat_folder = typer.prompt("Enter flat folder path (for example, C:\\Users\Flat)")
         delete_files = typer.confirm("Do you want to delete files after processing?", default=False)
         with open('config.txt', 'w') as f:
-            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{delete_files}')
+            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
+
+    #calibration start for DARK
+    typer.echo(f'Start processing DARK files')
+    dark = summarize_dark(dark_folder)
+    typer.echo(f'DARK files processed')
+    typer.echo(f'Start processing BIAS files')
+    bias = summarize_bias(bias_folder)
+    typer.echo(f'BIAS files processed')
+    typer.echo(f'Start processing FLAT files')
+    flat = summarize_flat(flat_folder)
+    typer.echo(f'FLAT files processed')
+    typer.echo(f'Start processing files')
 
     typer.secho(f"Processing started", fg=typer.colors.GREEN)
     typer.echo(f'Processing files in {root_folder}')
@@ -72,7 +89,8 @@ def process(name: str = 'process', formal: bool = False):
                     filter = process_fiter(hdr)
                     destination_folder = create_folder_filter(file_path, object, type, date, filter, dest_folder)
                     copy_file(file_path, destination_folder, delete_files)
-                    rename_file(file_path, destination_folder, flag)
+                    new_file_path = rename_file(file_path, destination_folder, flag)
+                    get_final_image(new_file_path, bias, dark, flat)
                     typer.echo(f'File {file} processed')
                     processed_files += 1
                 else:
@@ -135,7 +153,6 @@ def process_fits_object(hdr):
         return False
 
  
-
 
 def create_folder_filter(file_path, object, type, date, filter, dest_folder):
     '''
@@ -206,9 +223,9 @@ def rename_file(file_path, destination_folder, flag):
     os.rename(old_file_path, new_file_path)
     typer.echo(f'File {file_name} renamed')
     fix_fits_header(new_file_path)
+    return new_file_path
 
 
-#fix FITS HEADER for CALIBRATED files add HISTORY = CALIBRATED to header
 def fix_fits_header(file_path):
     hdulist = pyfits.open(file_path, mode='update')
     hdr = hdulist[0].header
@@ -218,6 +235,77 @@ def fix_fits_header(file_path):
     typer.echo(f'File {file_path} header fixed')
 
     
+def calibrate_file(file_path, bias_path, dark_path, flat_path):
+    hdulist = pyfits.open(file_path, mode='update')
+    hdr = hdulist[0].header
+    if hdr['IMAGETYP'] == 'OBJECT':
+        data = hdulist[0].data
+        bias = pyfits.getdata(bias_path)
+        dark = pyfits.getdata(dark_path)
+        flat = pyfits.getdata(flat_path)
+        data = data - bias
+        data = data - dark
+        data = data / flat
+        hdulist[0].data = data
+        hdulist.flush()
+        hdulist.close()
+        typer.echo(f'File {file_path} calibrated')
+    else:
+        typer.echo(f'File {file_path} not calibrated')
+
+
+#get temperature from header
+def get_temperature(hdr):
+    if hdr['TEMP']:
+        return hdr['TEMP']
+    else:
+        return False
+
+#summirize FITS dark files in folder by median
+def summarize_dark(folder_path):
+    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    data = []
+    for file in files:
+        hdulist = pyfits.open(file, mode='update')
+        data.append(hdulist[0].data)
+        hdulist.close()
+    median = np.median(data, axis=0)
+    return median
+
+#summirize FITS flat files in folder by median
+def summarize_flat(folder_path):
+    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    data = []
+    for file in files:
+        hdulist = pyfits.open(file, mode='update')
+        data.append(hdulist[0].data)
+        hdulist.close()
+    median = np.median(data, axis=0)
+    return median
+
+#summirize FITS bias files in folder by median
+def summarize_bias(folder_path):
+    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    data = []
+    for file in files:
+        hdulist = pyfits.open(file, mode='update')
+        data.append(hdulist[0].data)
+        hdulist.close()
+    median = np.median(data, axis=0)
+    return median
+
+
+def get_final_image(light_path, bias, dark, flat):
+    hdulist = pyfits.open(light_path, mode='update')
+    light = hdulist[0].data
+    final = light - bias - (dark - bias)
+    final = final / (flat - bias)
+    hdulist[0].data = final
+    hdulist.flush()
+    hdulist.close()
+    typer.echo(f'File {light_path} stored')
+
+
 
 if __name__ == "__main__":
     app()
