@@ -28,20 +28,25 @@ def process(name: str = 'process', formal: bool = False):
             type = lines[1].strip()
             flag = lines[2].strip()
             dest_folder = lines[3].strip()
+            delete_files = lines[4].strip()
     else:
         typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
         root_folder = typer.prompt("Enter the source folder path (for example, C:\\Users)")
         type = typer.prompt("Enter type (for example, LIGHT)")
         flag = typer.prompt("Enter flag (for example, _CALIBRATED)")
         dest_folder = typer.prompt("Enter destination folder path (for example, C:\\Users\Light)")
+        delete_files = typer.confirm("Do you want to delete files after processing?", default=False)
         with open('config.txt', 'w') as f:
-            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}')
+            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{delete_files}')
 
     typer.secho(f"Processing started", fg=typer.colors.GREEN)
     typer.echo(f'Processing files in {root_folder}')
     typer.echo(f'Type: {type}')
     typer.echo(f'flag: {flag}')
     typer.echo(f'Destination folder: {dest_folder}')
+    typer.secho(f'Delete files after processing: {delete_files}', fg=typer.colors.RED)
+    typer.secho(f'Sleeping for 10 seconds... before processing', fg=typer.colors.YELLOW)
+    time.sleep(10)
     typer.echo(f'Processing files...')
 
     if not os.path.exists(dest_folder):
@@ -66,7 +71,7 @@ def process(name: str = 'process', formal: bool = False):
                     date = process_file_date(hdr)
                     filter = process_fiter(hdr)
                     destination_folder = create_folder_filter(file_path, object, type, date, filter, dest_folder)
-                    copy_file(file_path, destination_folder)
+                    copy_file(file_path, destination_folder, delete_files)
                     rename_file(file_path, destination_folder, flag)
                     typer.echo(f'File {file} processed')
                     processed_files += 1
@@ -163,7 +168,7 @@ def skip_file(file_path):
 
 
 
-def copy_file(file_path, destination_folder):
+def copy_file(file_path, destination_folder, delete_files=False):
     '''
     copy file to destination folder
     '''
@@ -175,9 +180,7 @@ def copy_file(file_path, destination_folder):
         if answer == 'y':
             shutil.copy(file_path, destination_folder)
             typer.echo(f'File {file_name} copied to {destination_folder}')
-            typer.echo(f'Do you want to delete original file? (y/n)')
-            answer = input()
-            if answer == 'y':
+            if delete_files:
                 os.remove(file_path)
                 typer.echo(f'File {file_name} deleted')
         else:
@@ -185,9 +188,7 @@ def copy_file(file_path, destination_folder):
     else:
         shutil.copy(file_path, destination_folder)
         typer.echo(f'File {file_name} copied to {destination_folder}')
-        typer.echo(f'Do you want to delete original file? (y/n)')
-        answer = input()
-        if answer == 'y':
+        if delete_files:
             os.remove(file_path)
             typer.echo(f'File {file_name} deleted')
 
