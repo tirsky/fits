@@ -67,6 +67,7 @@ def process(name: str = 'process', formal: bool = False):
         os.mkdir(dest_folder)
     skipped_files = 0
     processed_files = 0
+    flat_combined = None
     with typer.progressbar(os.listdir(root_folder), label="Processing files") as files:
         for file in files:
             #if file has already contains _CALIBRATED in name, skip it
@@ -88,7 +89,12 @@ def process(name: str = 'process', formal: bool = False):
                     copy_file(file_path, destination_folder, delete_files)
                     new_file_path = rename_file(file_path, destination_folder, flag)
                     typer.echo(f'Start combining(median) FLAT files')
-                    flat = summarize_flat(flat_folder, filter)
+                    if filter == 'C' and flat_combined is None:
+                        flat = summarize_flat(flat_folder, filter)
+                        flat_combined = flat
+                    else:
+                        if not flat_combined:
+                            flat = summarize_flat(flat_folder, filter)
                     typer.echo(f'FLAT files combined')
                     get_final_image(new_file_path, bias, dark, flat)
                     typer.echo(f'File {file} processed')
