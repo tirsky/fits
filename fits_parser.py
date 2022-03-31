@@ -1,12 +1,11 @@
-from itertools import count
-import time
+import glob
 import os
 import shutil
-import typer
+import time
 
-from astropy.io import fits as pyfits
-import glob
 import numpy as np
+import typer
+from astropy.io import fits as pyfits
 
 app = typer.Typer()
 
@@ -43,7 +42,8 @@ def process(name: str = 'process', formal: bool = False):
         flat_folder = typer.prompt("Enter flat folder path (for example, C:\\Users\Flat)")
         delete_files = typer.confirm("Do you want to delete files after processing?", default=False)
         with open('config.txt', 'w') as f:
-            f.write(f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
+            f.write(
+                f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
 
     typer.echo(f'Start combining(median) DARK files')
     dark = summarize_dark(dark_folder)
@@ -70,7 +70,7 @@ def process(name: str = 'process', formal: bool = False):
     flat_combined = False
     with typer.progressbar(os.listdir(root_folder), label="Processing files") as files:
         for file in files:
-            #if file has already contains _CALIBRATED in name, skip it
+            # if file has already contains _CALIBRATED in name, skip it
             if flag in file:
                 skipped_files += 1
                 continue
@@ -108,13 +108,12 @@ def process(name: str = 'process', formal: bool = False):
         typer.echo()
         color = typer.colors.GREEN
         typer.secho(f"Processing finished", fg=color)
-        typer.echo(f'{processed_files} files processed')        
+        typer.echo(f'{processed_files} files processed')
         typer.echo(f'Files skipped: {skipped_files}')
 
     # if formal:
     #     shutil.rmtree(root_folder)
     #     typer.secho(f"Source folder {root_folder} deleted", fg=typer.colors.GREEN)
-
 
 
 def process_fits_type(hdr, type):
@@ -125,6 +124,7 @@ def process_fits_type(hdr, type):
         return True
     else:
         return False
+
 
 def process_file_date(hdr):
     '''
@@ -138,17 +138,17 @@ def process_file_date(hdr):
     else:
         return False
 
+
 def process_fiter(hdr):
     '''
     get filter from file content
     '''
-    filter = hdr.get('FILTER', 'C') 
+    filter = hdr.get('FILTER', 'C')
     if filter:
         return filter
     else:
         return False
-        
-        
+
 
 def process_fits_object(hdr):
     '''
@@ -159,7 +159,6 @@ def process_fits_object(hdr):
     else:
         return False
 
- 
 
 def create_folder_filter(file_path, object, type, date, filter, dest_folder):
     '''
@@ -191,7 +190,6 @@ def skip_file(file_path):
         return False
 
 
-
 def copy_file(file_path, destination_folder, delete_files=False):
     '''
     copy file to destination folder
@@ -204,7 +202,7 @@ def copy_file(file_path, destination_folder, delete_files=False):
         if answer == 'y':
             shutil.copy(file_path, destination_folder)
             typer.echo(f'File {file_name} copied to {destination_folder}')
-            if str(delete_files.lower()) == 'y':
+            if str(delete_files).lower() == 'y':
                 os.remove(file_path)
                 typer.echo(f'File {file_name} deleted')
         else:
@@ -212,7 +210,7 @@ def copy_file(file_path, destination_folder, delete_files=False):
     else:
         shutil.copy(file_path, destination_folder)
         typer.echo(f'File {file_name} copied to {destination_folder}')
-        if str(delete_files.lower()) == 'y':
+        if str(delete_files).lower() == 'y':
             os.remove(file_path)
             typer.echo(f'File {file_name} deleted')
 
@@ -227,7 +225,12 @@ def rename_file(file_path, destination_folder, flag):
     new_file_name = '.'.join(file_name_split) + 'fits'
     new_file_path = os.path.join(destination_folder, new_file_name)
     old_file_path = os.path.join(destination_folder, file_name)
-    os.rename(old_file_path, new_file_path)
+    try:
+        os.rename(old_file_path, new_file_path)
+    except Exception:
+        typer.echo(f'File {file_name} not renamed')
+        os.replace(old_file_path, new_file_path)
+        typer.echo(f'File {file_name} replaced')
     typer.echo(f'File {file_name} renamed')
     fix_fits_header(new_file_path)
     return new_file_path
@@ -241,7 +244,7 @@ def fix_fits_header(file_path):
     hdulist.close()
     typer.echo(f'File {file_path} header fixed')
 
-    
+
 def calibrate_file(file_path, bias_path, dark_path, flat_path):
     hdulist = pyfits.open(file_path, mode='update')
     hdr = hdulist[0].header
@@ -261,12 +264,11 @@ def calibrate_file(file_path, bias_path, dark_path, flat_path):
         typer.echo(f'File {file_path} not calibrated')
 
 
-#get temperature from header
-def get_temperature(hdr):
-    if hdr['TEMP']:
-        return hdr['TEMP']
-    else:
-        return False
+# def get_temperature(hdr):
+#     if hdr['TEMP']:
+#         return hdr['TEMP']
+#     else:
+#         return False
 
 
 def mediancombine(filelist, filter=None):
@@ -276,66 +278,42 @@ def mediancombine(filelist, filter=None):
     n = len(filelist)
     first_frame_data = pyfits.getdata(filelist[0])
     imsize_y, imsize_x = first_frame_data.shape
-    fits_stack = np.zeros((imsize_y, imsize_x , n), dtype = np.float32) 
+    fits_stack = np.zeros((imsize_y, imsize_x, n), dtype=np.float32)
     count = 0
     for ii in range(0, n):
         if filter:
             hdr = pyfits.getheader(filelist[ii])
             if hdr.get('FILTER', 'C') == filter:
                 im = pyfits.getdata(filelist[ii])
-                fits_stack[:,:,ii] = im
+                fits_stack[:, :, ii] = im
                 print(f'{filelist[ii]} added to stack with filter {filter}')
                 count += 1
             else:
                 continue
         else:
             im = pyfits.getdata(filelist[ii])
-            fits_stack[:,:,ii] = im
+            fits_stack[:, :, ii] = im
     if filter and count == 0:
-        #color typer red
-        typer.secho(f'No files with filter {filter} found', color='red')
+        typer.secho(f'No files with filter {filter} found', fg=typer.colors.RED)
         exit()
     med_frame = np.median(fits_stack, axis=2)
     return med_frame
 
 
-
-#summirize FITS dark files in folder by median
 def summarize_dark(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
     return mediancombine(files)
-    # data = []
-    # for file in files:
-    #     hdulist = pyfits.open(file, mode='update')
-    #     data.append(hdulist[0].data)
-    #     hdulist.close()
-    # median = np.median(data, axis=0)
-    # return median
 
-#summirize FITS flat files in folder by median
+
 def summarize_flat(folder_path, filter):
     print(f'Filter: {filter}')
     files = glob.glob(os.path.join(folder_path, '*.fits'))
     return mediancombine(files, filter)
-    # data = []
-    # for file in files:
-    #     hdulist = pyfits.open(file, mode='update')
-    #     data.append(hdulist[0].data)
-    #     hdulist.close()
-    # median = np.median(data, axis=0)
-    # return median
 
-#summirize FITS bias files in folder by median
+
 def summarize_bias(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
     return mediancombine(files)
-    # data = []
-    # for file in files:
-    #     hdulist = pyfits.open(file, mode='update')
-    #     data.append(hdulist[0].data)
-    #     hdulist.close()
-    # median = np.median(data, axis=0)
-    # return median
 
 
 def get_final_image(light_path, bias, dark, flat):
@@ -349,7 +327,5 @@ def get_final_image(light_path, bias, dark, flat):
     typer.echo(f'File {light_path} stored')
 
 
-
 if __name__ == "__main__":
     app()
-
