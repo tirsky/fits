@@ -6,6 +6,10 @@ import time
 import numpy as np
 import typer
 from astropy.io import fits as pyfits
+from ccdproc import CCDData
+from ccdproc import combine, ImageFileCollection
+from pathlib import Path
+from astropy.stats import mad_std
 
 app = typer.Typer()
 
@@ -46,10 +50,10 @@ def process(name: str = 'process', formal: bool = False):
                 f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
 
     typer.echo(f'Start combining(median) DARK files')
-    dark = summarize_dark(dark_folder)
+    dark, count_dark = summarize_dark(dark_folder)
     typer.echo(f'DARK files combined')
     typer.echo(f'Start combining(median) BIAS files')
-    bias = summarize_bias(bias_folder)
+    bias, count_bias = summarize_bias(bias_folder)
     typer.echo(f'BIAS files combined')
     typer.echo(f'Start processing files')
 
@@ -69,6 +73,9 @@ def process(name: str = 'process', formal: bool = False):
     processed_files = 0
     flat_combined = False
     with typer.progressbar(os.listdir(root_folder), label="Processing files") as files:
+        #ccreate dict for flat files
+        flat_dict = {}
+
         for file in files:
             # if file has already contains _CALIBRATED in name, skip it
             if flag in file:
@@ -90,14 +97,23 @@ def process(name: str = 'process', formal: bool = False):
                     new_file_path = rename_file(file_path, destination_folder, flag)
                     typer.echo(f'Start combining(median) FLAT files')
                     if filter == 'C' and not flat_combined:
-                        flat = summarize_flat(flat_folder, filter)
+                        if filter in flat_dict:
+                            flat = flat_dict[filter]['flat']
+                        else:
+                            flat, count_flat = summarize_flat(flat_folder, filter)
+                            flat_dict[filter] = {'flat': flat, 'count': count_flat}
                         if flat.any():
                             flat_combined = True
                     else:
                         if not flat_combined:
-                            flat = summarize_flat(flat_folder, filter)
+                            if filter in flat_dict:
+                                flat = flat_dict[filter]['flat']
+                            else:
+                                flat, count_flat = summarize_flat(flat_folder, filter)
+                                flat_dict[filter] = {'flat': flat, 'count': count_flat}
                     typer.echo(f'FLAT files combined')
-                    get_final_image(new_file_path, bias, dark, flat)
+                    count_flat = flat_dict[filter]['count']
+                    get_final_image(new_file_path, bias, dark, flat, count_dark, count_bias, count_flat)
                     typer.echo(f'File {file} processed')
                     processed_files += 1
                 else:
@@ -110,6 +126,7 @@ def process(name: str = 'process', formal: bool = False):
         typer.secho(f"Processing finished", fg=color)
         typer.echo(f'{processed_files} files processed')
         typer.echo(f'Files skipped: {skipped_files}')
+        
 
     # if formal:
     #     shutil.rmtree(root_folder)
@@ -271,7 +288,7 @@ def calibrate_file(file_path, bias_path, dark_path, flat_path):
 #         return False
 
 
-def mediancombine(filelist, filter=None):
+def mediancombine(filelist, filter=None, flat=False):
     '''
     median combine files
     '''
@@ -297,35 +314,79 @@ def mediancombine(filelist, filter=None):
         typer.secho(f'No files with filter {filter} found', fg=typer.colors.RED)
         exit()
     med_frame = np.median(fits_stack, axis=2)
+    if flat:
+        return med_frame, count
     return med_frame
-
 
 def summarize_dark(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    return mediancombine(files)
+    #return count of files in folder
+    return mediancombine(files), len(files)
 
 
 def summarize_flat(folder_path, filter):
     print(f'Filter: {filter}')
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    return mediancombine(files, filter)
+    return mediancombine(files, filter, flat=True)
 
 
 def summarize_bias(folder_path):
     files = glob.glob(os.path.join(folder_path, '*.fits'))
-    return mediancombine(files)
+    return mediancombine(files), len(files)
 
 
-def get_final_image(light_path, bias, dark, flat):
+def get_final_image(light_path, bias, dark, flat, count_dark, count_bias, count_flat):
     hdulist = pyfits.open(light_path, mode='update')
     light = hdulist[0].data
     final = light - bias - (dark - bias)
     final = final / (flat - bias)
     hdulist[0].data = final
+    #update history
+    hdr = hdulist[0].header
+    hdr.add_history('= DARK: ' + str(count_dark))
+    hdr.add_history('= BIAS: ' + str(count_bias))
+    hdr.add_history('= FLAT: ' + str(count_flat))
     hdulist.flush()
     hdulist.close()
     typer.echo(f'File {light_path} stored')
 
 
+# def combine_ccd(image_path, output_path):
+#     files = glob.glob(os.path.join(image_path, '*.fits'))
+#     ccd_list = []
+#     for file in files:
+#         ccd = CCDData.read(file, unit="adu") 
+#         ccd_list.append(ccd)
+
+#     calibrated_path = Path(image_path)
+#     reduced_images = ImageFileCollection(calibrated_path, glob_include='*.fits')
+#     calibrated = reduced_images.files_filtered(imagetyp='light', include_path=True)
+#     combined = combine(calibrated,
+#                               method='median',
+#                               sigma_clip=True,
+#                               sigma_clip_func=np.ma.median,
+#                               mem_limit=350e6,
+#                               unit='adu',
+#                               clip_extrema=True,
+#                               dtype=np.float32
+#                             )
+#     combined.meta['combined'] = True
+#     output_path = os.path.join(output_path, 'COMBINED').replace('.fits', '')
+#     if not os.path.exists(output_path):
+#         os.makedirs(output_path)
+#     fits_file = os.path.join(output_path, 'sum.fits')
+#     typer.echo(f'File {output_path} created')
+#     combined.write(fits_file, overwrite=True)
+
+#     #open fits header of combined image
+#     hdulist = pyfits.open(fits_file, mode='update')
+#     hdr = hdulist[0].header
+#     hdr.add_history('= COMBINED')
+#     hdulist.flush()
+#     hdulist.close()
+#     typer.echo(f'File {output_path} header fixed')
+
+
 if __name__ == "__main__":
+    #combine_ccd('/Users/i.tirsky/PycharmProjects/django_test/ROOT/COMBINE', '/Users/i.tirsky/PycharmProjects/django_test/ROOT/COMBINE')
     app()
