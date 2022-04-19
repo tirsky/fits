@@ -1,7 +1,10 @@
 import glob
 import os
+from re import M
 import shutil
 import time
+from matplotlib import image
+import win32com.client
 
 import numpy as np
 import typer
@@ -351,42 +354,35 @@ def get_final_image(light_path, bias, dark, flat, count_dark, count_bias, count_
     typer.echo(f'File {light_path} stored')
 
 
-# def combine_ccd(image_path, output_path):
-#     files = glob.glob(os.path.join(image_path, '*.fits'))
-#     ccd_list = []
-#     for file in files:
-#         ccd = CCDData.read(file, unit="adu") 
-#         ccd_list.append(ccd)
+def get_maxim_doc():
+    maxim_connector = win32com.client.Dispatch('MaxIm.Document')
+    return maxim_connector
 
-#     calibrated_path = Path(image_path)
-#     reduced_images = ImageFileCollection(calibrated_path, glob_include='*.fits')
-#     calibrated = reduced_images.files_filtered(imagetyp='light', include_path=True)
-#     combined = combine(calibrated,
-#                               method='median',
-#                               sigma_clip=True,
-#                               sigma_clip_func=np.ma.median,
-#                               mem_limit=350e6,
-#                               unit='adu',
-#                               clip_extrema=True,
-#                               dtype=np.float32
-#                             )
-#     combined.meta['combined'] = True
-#     output_path = os.path.join(output_path, 'COMBINED').replace('.fits', '')
-#     if not os.path.exists(output_path):
-#         os.makedirs(output_path)
-#     fits_file = os.path.join(output_path, 'sum.fits')
-#     typer.echo(f'File {output_path} created')
-#     combined.write(fits_file, overwrite=True)
+#combine images from maxim DL
+def combine_maxim_images(folder_path):
+    maxim_doc = get_maxim_doc()
+    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    images = []
 
-#     #open fits header of combined image
-#     hdulist = pyfits.open(fits_file, mode='update')
-#     hdr = hdulist[0].header
-#     hdr.add_history('= COMBINED')
-#     hdulist.flush()
-#     hdulist.close()
-#     typer.echo(f'File {output_path} header fixed')
+    for file in files:
+        images.append(file)
+
+    #combine images with CombineImages 
+    maxim_doc.CombineFiles(os.path.join(folder_path, '*.fits'), 1, False, 4, False)
+    maxim_doc.DDP(0, True, True, 0, 0, 80)
+    maxim_doc.SaveFile(os.path.join(folder_path, 'combined.fits'), 3, True, 2)
+    typer.echo(f'Combined images saved to {folder_path}')
+
+    #open fits header of combined image
+    hdulist = pyfits.open(os.path.join(folder_path, 'combined.fits'), mode='update')
+    hdr = hdulist[0].header
+    hdr.add_history('= COMBINED')
+    hdulist.flush()
+    hdulist.close()
+    typer.echo(f'File {os.path.join(folder_path, "combined.fits")} header fixed')
+
 
 
 if __name__ == "__main__":
-    #combine_ccd('/Users/i.tirsky/PycharmProjects/django_test/ROOT/COMBINE', '/Users/i.tirsky/PycharmProjects/django_test/ROOT/COMBINE')
-    app()
+    #app()
+    combine_maxim_images('C:\\Users\\tirsky\Desktop\\fits\\next')

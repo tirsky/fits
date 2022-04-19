@@ -1,4 +1,5 @@
 
 astropy==4.2.1
 typer==0.4.0
-
+ccdproc==2.3.0
+pywin32==303
