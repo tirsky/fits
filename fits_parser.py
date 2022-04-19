@@ -1,3 +1,5 @@
+#author Igor Tirsky 19.04.2022
+
 import glob
 import os
 from re import M
@@ -16,22 +18,27 @@ from astropy.stats import mad_std
 
 app = typer.Typer()
 
+config_file = 'config.txt'
+fits = '*.fits'
+
+
+# TODO add temperature for DARK
+
 
 @app.command()
-def process(name: str = 'process', formal: bool = False):
+def process(name: str = 'process'):
     '''
-    #process all files in folder
-    #param name: name of processing 'process'
-    #param formal: if True, process files with formal naming convention
+    process all files in folder
+    param name: name of processing 'process'
     '''
 
     current_dir = os.getcwd()
     typer.echo(f'Current working directory: {current_dir}')
-    if os.path.exists(os.path.join(current_dir, 'config.txt')):
-        with open(os.path.join(current_dir, 'config.txt'), 'r') as f:
+    if os.path.exists(os.path.join(current_dir, config_file)):
+        with open(os.path.join(current_dir, config_file), 'r') as f:
             lines = f.readlines()
             root_folder = lines[0].strip()
-            type = lines[1].strip()
+            type_ = lines[1].strip()
             flag = lines[2].strip()
             dest_folder = lines[3].strip()
             dark_folder = lines[4].strip()
@@ -41,16 +48,16 @@ def process(name: str = 'process', formal: bool = False):
     else:
         typer.secho(f"Welcome to FITS {name}", fg=typer.colors.MAGENTA)
         root_folder = typer.prompt("Enter the source folder path (for example, C:\\Users)")
-        type = typer.prompt("Enter type (for example, LIGHT)")
+        type_ = typer.prompt("Enter type (for example, LIGHT)")
         flag = typer.prompt("Enter flag (for example, _CALIBRATED)")
         dest_folder = typer.prompt("Enter destination folder path (for example, C:\\Users\Light)")
         dark_folder = typer.prompt("Enter dark folder path (for example, C:\\Users\Dark)")
         bias_folder = typer.prompt("Enter bias folder path (for example, C:\\Users\Bias)")
         flat_folder = typer.prompt("Enter flat folder path (for example, C:\\Users\Flat)")
         delete_files = typer.confirm("Do you want to delete files after processing?", default=False)
-        with open('config.txt', 'w') as f:
+        with open(config_file, 'w') as f:
             f.write(
-                f'{root_folder}\n{type}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
+                f'{root_folder}\n{type_}\n{flag}\n{dest_folder}\n{dark_folder}\n{bias_folder}\n{flat_folder}\n{delete_files}')
 
     typer.echo(f'Start combining(median) DARK files')
     dark, count_dark = summarize_dark(dark_folder)
@@ -62,7 +69,7 @@ def process(name: str = 'process', formal: bool = False):
 
     typer.secho(f"Processing started", fg=typer.colors.GREEN)
     typer.echo(f'Processing files in {root_folder}')
-    typer.echo(f'Type: {type}')
+    typer.echo(f'Type: {type_}')
     typer.echo(f'flag: {flag}')
     typer.echo(f'Destination folder: {dest_folder}')
     typer.secho(f'Delete files after processing: {delete_files}', fg=typer.colors.RED)
@@ -75,8 +82,9 @@ def process(name: str = 'process', formal: bool = False):
     skipped_files = 0
     processed_files = 0
     flat_combined = False
+    destination_folder_arr = set()
     with typer.progressbar(os.listdir(root_folder), label="Processing files") as files:
-        #ccreate dict for flat files
+        # ccreate dict for flat files
         flat_dict = {}
 
         for file in files:
@@ -90,32 +98,33 @@ def process(name: str = 'process', formal: bool = False):
                 continue
             hdulist = pyfits.open(file_path)
             hdr = hdulist[0].header
-            if process_fits_type(hdr, type):
-                object = process_fits_object(hdr)
-                if object:
+            if process_fits_type(hdr, type_):
+                object_ = process_fits_object(hdr)
+                if object_:
                     date = process_file_date(hdr)
-                    filter = process_fiter(hdr)
-                    destination_folder = create_folder_filter(file_path, object, type, date, filter, dest_folder)
+                    filter_ = process_fiter(hdr)
+                    destination_folder = create_folder_filter(file_path, object_, type_, date, filter_, dest_folder)
+                    destination_folder_arr.add(destination_folder)
                     copy_file(file_path, destination_folder, delete_files)
                     new_file_path = rename_file(file_path, destination_folder, flag)
                     typer.echo(f'Start combining(median) FLAT files')
-                    if filter == 'C' and not flat_combined:
-                        if filter in flat_dict:
-                            flat = flat_dict[filter]['flat']
+                    if filter_ == 'C' and not flat_combined:
+                        if filter_ in flat_dict:
+                            flat = flat_dict[filter_]['flat']
                         else:
-                            flat, count_flat = summarize_flat(flat_folder, filter)
-                            flat_dict[filter] = {'flat': flat, 'count': count_flat}
+                            flat, count_flat = summarize_flat(flat_folder, filter_)
+                            flat_dict[filter_] = {'flat': flat, 'count': count_flat}
                         if flat.any():
                             flat_combined = True
                     else:
                         if not flat_combined:
-                            if filter in flat_dict:
-                                flat = flat_dict[filter]['flat']
+                            if filter_ in flat_dict:
+                                flat = flat_dict[filter_]['flat']
                             else:
-                                flat, count_flat = summarize_flat(flat_folder, filter)
-                                flat_dict[filter] = {'flat': flat, 'count': count_flat}
+                                flat, count_flat = summarize_flat(flat_folder, filter_)
+                                flat_dict[filter_] = {'flat': flat, 'count': count_flat}
                     typer.echo(f'FLAT files combined')
-                    count_flat = flat_dict[filter]['count']
+                    count_flat = flat_dict[filter_]['count']
                     get_final_image(new_file_path, bias, dark, flat, count_dark, count_bias, count_flat)
                     typer.echo(f'File {file} processed')
                     processed_files += 1
@@ -129,11 +138,12 @@ def process(name: str = 'process', formal: bool = False):
         typer.secho(f"Processing finished", fg=color)
         typer.echo(f'{processed_files} files processed')
         typer.echo(f'Files skipped: {skipped_files}')
-        
 
-    # if formal:
-    #     shutil.rmtree(root_folder)
-    #     typer.secho(f"Source folder {root_folder} deleted", fg=typer.colors.GREEN)
+    typer.echo(f'Destination folders:')
+    for folder in destination_folder_arr:
+        typer.echo(f'{folder}')
+        combine_maxim_images(folder)
+        typer.echo(f'{folder} combined')
 
 
 def process_fits_type(hdr, type):
@@ -163,16 +173,16 @@ def process_fiter(hdr):
     '''
     get filter from file content
     '''
-    filter = hdr.get('FILTER', 'C')
-    if filter:
-        return filter
+    filter_ = hdr.get('FILTER', 'C')
+    if filter_:
+        return filter_
     else:
         return False
 
 
 def process_fits_object(hdr):
     '''
-    get object name from file content 
+    get object name from file content
     '''
     if hdr['OBJECT']:
         return hdr['OBJECT']
@@ -284,13 +294,6 @@ def calibrate_file(file_path, bias_path, dark_path, flat_path):
         typer.echo(f'File {file_path} not calibrated')
 
 
-# def get_temperature(hdr):
-#     if hdr['TEMP']:
-#         return hdr['TEMP']
-#     else:
-#         return False
-
-
 def mediancombine(filelist, filter=None, flat=False):
     '''
     median combine files
@@ -321,20 +324,21 @@ def mediancombine(filelist, filter=None, flat=False):
         return med_frame, count
     return med_frame
 
+
 def summarize_dark(folder_path):
-    files = glob.glob(os.path.join(folder_path, '*.fits'))
-    #return count of files in folder
+    files = glob.glob(os.path.join(folder_path, fits))
+    # return count of files in folder
     return mediancombine(files), len(files)
 
 
 def summarize_flat(folder_path, filter):
     print(f'Filter: {filter}')
-    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    files = glob.glob(os.path.join(folder_path, fits))
     return mediancombine(files, filter, flat=True)
 
 
 def summarize_bias(folder_path):
-    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    files = glob.glob(os.path.join(folder_path, fits))
     return mediancombine(files), len(files)
 
 
@@ -344,7 +348,7 @@ def get_final_image(light_path, bias, dark, flat, count_dark, count_bias, count_
     final = light - bias - (dark - bias)
     final = final / (flat - bias)
     hdulist[0].data = final
-    #update history
+    # update history
     hdr = hdulist[0].header
     hdr.add_history('= DARK: ' + str(count_dark))
     hdr.add_history('= BIAS: ' + str(count_bias))
@@ -354,35 +358,38 @@ def get_final_image(light_path, bias, dark, flat, count_dark, count_bias, count_
     typer.echo(f'File {light_path} stored')
 
 
-def get_maxim_doc():
-    maxim_connector = win32com.client.Dispatch('MaxIm.Document')
-    return maxim_connector
-
-#combine images from maxim DL
 def combine_maxim_images(folder_path):
-    maxim_doc = get_maxim_doc()
-    files = glob.glob(os.path.join(folder_path, '*.fits'))
+    '''
+    combine images from maxim DL
+    '''
+    combined = os.path.join(folder_path, 'combined.fits')
+    if os.path.isfile(combined):
+        typer.secho('combined.fits file already exists', fg=typer.colors.RED)
+        exit()
+
+    # get maxim connector
+    maxim_doc = win32com.client.Dispatch('MaxIm.Document')
+
+    files = glob.glob(os.path.join(folder_path, fits))
     images = []
 
     for file in files:
         images.append(file)
 
-    #combine images with CombineImages 
-    maxim_doc.CombineFiles(os.path.join(folder_path, '*.fits'), 1, False, 4, False)
+    # combine images with CombineImages
+    maxim_doc.CombineFiles(os.path.join(folder_path, fits), 1, False, 4, False)
     maxim_doc.DDP(0, True, True, 0, 0, 80)
-    maxim_doc.SaveFile(os.path.join(folder_path, 'combined.fits'), 3, True, 2)
+    maxim_doc.SaveFile(combined, 3, True, 2)
     typer.echo(f'Combined images saved to {folder_path}')
 
-    #open fits header of combined image
-    hdulist = pyfits.open(os.path.join(folder_path, 'combined.fits'), mode='update')
+    # open fits header of combined image
+    hdulist = pyfits.open(combined, mode='update')
     hdr = hdulist[0].header
     hdr.add_history('= COMBINED')
     hdulist.flush()
     hdulist.close()
-    typer.echo(f'File {os.path.join(folder_path, "combined.fits")} header fixed')
-
+    typer.echo(f'File {combined} header fixed')
 
 
 if __name__ == "__main__":
-    #app()
-    combine_maxim_images('C:\\Users\\tirsky\Desktop\\fits\\next')
+    app()
