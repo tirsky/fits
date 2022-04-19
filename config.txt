@@ -1,0 +1,8 @@
+C:\Users\tirsky\Desktop\fits\LIGHT
+LIGHT
+_CALIBRATED
+C:\Users\tirsky\Desktop\fits\LIGHT
+C:\Users\tirsky\Desktop\fits\DARK
+C:\Users\tirsky\Desktop\fits\BIAS
+C:\Users\tirsky\Desktop\fits\FLAT
+False
