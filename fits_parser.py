@@ -365,7 +365,7 @@ def combine_maxim_images(folder_path):
     combined = os.path.join(folder_path, 'combined.fits')
     if os.path.isfile(combined):
         typer.secho('combined.fits file already exists', fg=typer.colors.RED)
-        exit()
+        return
 
     # get maxim connector
     maxim_doc = win32com.client.Dispatch('MaxIm.Document')
@@ -377,7 +377,7 @@ def combine_maxim_images(folder_path):
         images.append(file)
 
     # combine images with CombineImages
-    maxim_doc.CombineFiles(os.path.join(folder_path, fits), 1, False, 4, False)
+    maxim_doc.CombineFiles(os.path.join(folder_path, fits), 0, False, 4, False) #1 cause an error need to use 0
     maxim_doc.DDP(0, True, True, 0, 0, 80)
     maxim_doc.SaveFile(combined, 3, True, 2)
     typer.echo(f'Combined images saved to {folder_path}')
